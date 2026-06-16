@@ -7,7 +7,7 @@ import sys
 
 GRID_SIZE = 20
 NUM_PREY = 6
-STEPS = 200000
+STEPS = 100000
 DEBUG = False
 SZ_SIZE = 6
 SZ_CAP = 3
