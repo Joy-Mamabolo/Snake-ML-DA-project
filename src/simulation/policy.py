@@ -46,8 +46,8 @@ class RandomPolicy:
 
 class QlearningPolicy:
     
-    def __init__(self, q_table, epsilon = 0.1, alpha = 0.3, gamma = 0.9):
-        self.q_table = q_table
+    def __init__(self, q_table=None, epsilon = 0.1, alpha = 0.3, gamma = 0.9):
+        self.q_table = q_table if q_table is not None else {}
         self.epsilon = epsilon
         self.alpha = alpha
         self.gamma = gamma

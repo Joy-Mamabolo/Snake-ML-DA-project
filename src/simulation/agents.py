@@ -7,7 +7,7 @@
 # that become desirable.
 ##############################################################################################
 class Agent:
-    def __init__(self, x, y, speed = 1, symbol = 'A'):
+    def __init__(self, x, y, policy, speed = 1, symbol = 'A'):
         self.x = x
         self.y = y
         self.prev_x = x
@@ -15,6 +15,7 @@ class Agent:
         self.speed = speed
         self.symbol = symbol
         self.actions = [(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)] #Up, Down, Right, Left
+        self.policy = policy
     
     def move(self, dx, dy, grid_size):
         self.prev_x = self.x
@@ -23,21 +24,21 @@ class Agent:
         self.x = max(0, min(grid_size-1, self.x + dx*self.speed))
         self.y = max(0, min(grid_size-1, self.y + dy*self.speed))
     
-    def propose_move(self, observation, policy):
+    def propose_move(self, observation):
         
-        return policy.choose_action(self, observation)
+        return self.policy.choose_action(self, observation)
 
 class Snake(Agent):
-    def __init__(self, x, y):
-        super().__init__(x, y, symbol = 'S')
+    def __init__(self, x, y, policy):
+        super().__init__(x, y, policy,symbol = 'S')
 
         # Removed the previous location parameters to agent class as it is generally useful to all agents
 
 
 # TODO: Remove all q-learning functionality and logic to q_learning.py
 class Prey(Agent):
-    def __init__(self, x, y, learning = False):
-        super().__init__(x, y, speed = 1, symbol="P")
+    def __init__(self, x, y, policy):
+        super().__init__(x, y, policy,speed = 1, symbol="P")
         self.alive = True
         self.generation = 0 # generation of the prey - also used to track how many times the prey has been captured and respawned.
         self.last_act = (int(0),int(0)) # This records the last move the prey proposed not the action enforced by the game class

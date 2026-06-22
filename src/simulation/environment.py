@@ -4,15 +4,20 @@
 
 # General imports
 import json
+import random
 
-# Dependenct imports
+# Dependency imports
 from observations import Observation
 from agents import Snake, Prey
+from policy import GreedyPolicy, RandomPolicy, QlearningPolicy
+from rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active
+
 
 # Global variables - TODO: Place these in a configuration file.
 
 GRID_SIZE = 20
 NUM_PREY = 6
+NUM_LEARNING_PREY = 3
 STEPS = 100000
 DEBUG = False
 SZ_SIZE = 6
@@ -43,31 +48,39 @@ class SafeZone:
 class Game:
     def __init__(self, grid_size = GRID_SIZE, num_prey = NUM_PREY):
         self.grid_size = grid_size
-        self.snake = Snake(grid_size//2, grid_size//2)
-        self.prey_list = [Prey(random.randint(0, grid_size-1), random.randint(0, grid_size -1), learning = bool(random.random()<0.7)) for _ in range(num_prey)]
+        self.snake = Snake(grid_size//2, grid_size//2, GreedyPolicy())
+        
+        self.prey_list = self.build_prey_list(num_prey, NUM_LEARNING_PREY)
+
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
         self.step_count = 0 # keep track of the number of steps taken in the game
     
-    def is_in_safe_zone(self, x, y):
-        for safe_zone in self.safe_zone:
-            if (safe_zone.x<=x<=safe_zone.x+safe_zone.size) and (safe_zone.y<=y<=safe_zone.y+safe_zone.size):
-                return (True, safe_zone.active)
-        return False, None
 
-    def is_in_bounds(self, x, y):
-        return False if x < 0 or x >= self.grid_size or y < 0 or y >= self.grid_size else True
+    def build_prey_list(self, total_prey, num_learning):
+        
+        prey_list = [Prey(random.randint(0,self.grid_size-1), random.randint(0,self.grid_size-1),RandomPolicy()) for _ in range(total_prey-num_learning)]
+
+        for _ in range(num_learning):
+
+            prey_list.append(Prey(random.randint(0, self.grid_size-1), random.randint(0, self.grid_size-1), QlearningPolicy()))
+        
+        return prey_list
+
+    # is_in_safezone function moved to rules.py. Replaced with necessary imports.
+
+    # is_in_bounds function moved to rules.py. Replaced with necessary imports.
 
     def step(self):
         # snake moves
         self.step_count+=1
-        sdx,sdy = self.snake.chase(self.prey_list) # chase function determines the proposed move of the snake and game checks if the move is valid before executing it.
+        sdx,sdy = self.snake.propose_move(observation) # chase function determines the proposed move of the snake and game checks if the move is valid before executing it.
 
         proposed_snake_x = self.snake.x + sdx
         proposed_snake_y = self.snake.y + sdy
 
         #print(f"proposed_snake-x: {self.snake.x, sdx}\tproposed_snake_y: {self.snake.y, sdy}")
 
-        if self.is_in_bounds(proposed_snake_x, proposed_snake_y):
+        if is_in_bounds(proposed_snake_x, proposed_snake_y, self.grid_size):
             for sz in self.safe_zone:
                 if (sz.active and sz.x <= proposed_snake_x < sz.x + sz.size and sz.y <= proposed_snake_y < sz.y + sz.size):
                     #print("Safe Zone Entry prevention")
@@ -79,21 +92,21 @@ class Game:
                         # stuck on left or right wall of safe zone, move either up or down
                         if self.snake.y >= sz.y+sz.size//2:
                             # more than half way up - go up (assuming wall is sketched from bottom left corner)
-                            self.snake.move(0,self.snake.speed)
+                            self.snake.move(0,self.snake.speed, self.grid_size)
                         else:
                             # less than half way up - go down
-                            self.snake.move(0, -self.snake.speed)
+                            self.snake.move(0, -self.snake.speed, self.grid_size)
                     else:
                         # stuck on top or bottom wall of safe zone, move either left or right
                         if self.snake.x >= sz.x+sz.size//2:
                             # more than half way right, go right
-                            self.snake.move(self.snake.speed,0)
+                            self.snake.move(self.snake.speed,0, self.grid_size)
                         else:
                             # less than half way right, go left
-                            self.snake.move(-self.snake.speed, 0)
+                            self.snake.move(-self.snake.speed, 0, self.grid_size)
                 else:
                     self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-                    self.snake.move(sdx, sdy) # proposed move is valid, execute it
+                    self.snake.move(sdx, sdy, self.grid_size) # proposed move is valid, execute it
         else:
             self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
             #self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
@@ -104,19 +117,19 @@ class Game:
 
                 if self.snake.y >= self.grid_size//2:
                     # more than half way up - go up (assuming wall is sketched from bottom left corner)
-                    self.snake.move(0,self.snake.speed)
+                    self.snake.move(0,self.snake.speed, self.grid_size)
                 else:
                     # less than half way up - go down
-                    self.snake.move(0, -self.snake.speed)
+                    self.snake.move(0, -self.snake.speed, self.grid_size)
             else:
                 # stuck on top or bottom wall of safe zone, move either left or right
 
                 if self.snake.x >= self.grid_size//2:
                     # more than half way right, go right
-                    self.snake.move(self.snake.speed,0)
+                    self.snake.move(self.snake.speed,0, self.grid_size)
                 else:
                     # less than half way right, go left
-                    self.snake.move(-self.snake.speed, 0)
+                    self.snake.move(-self.snake.speed, 0, self.grid_size)
 
         #prey moves/acts
         for prey in self.prey_list:
@@ -167,7 +180,7 @@ class Game:
                 
                 dx,dy = prey.last_act
 
-                if self.is_in_bounds(prey.x + dx, prey.y + dy):
+                if is_in_bounds(prey.x + dx, prey.y + dy, self.grid_size):
                     # Cannot assign reward here because it is possible that this move results in capture
                     prey.move(dx, dy, grid_size = self.grid_size)
 
@@ -187,22 +200,11 @@ class Game:
 
             # Set safe zone to off as soon as snake is inside, even if snake spawned there. Alternatively prohibit snake from spawning in sz
 
-            if (sz.x<=self.snake.x<sz.x+sz.size) and (sz.y<=self.snake.y<sz.y+sz.size):
-                sz.active = False 
-
             for prey in self.prey_list:
-                if (sz.x<=prey.x<sz.x+sz.size) and (sz.y<=prey.y<sz.y+sz.size):
+                if is_in_safe_zone(sz.x, sz.y, sz.size, prey.x, prey.y):
                     sz.current_occupants +=1
 
-                if sz.active and sz.current_occupants >= sz.capacity:
-                    sz.active = False # Safe zone becomes inactive when capacity is reached.
-                elif sz.active and sz.current_occupants < sz.capacity:
-                    pass # Safe zone is active and below capacity, nothing changes
-                elif not sz.active and sz.current_occupants < sz.capacity and not (sz.x<=self.snake.x<sz.x+sz.size and sz.y<=self.snake.y<sz.y+sz.size):
-                    sz.active = True # Safe zone becomes active again when occupants are below capacity and snake is no longer inside the safe zone.
-                else:
-                    pass # Safe zone is inactive and either occupants are above capacity or snake is still inside, nothing changes
-
+            sz.active = is_safe_zone_active(sz.capacity, sz.current_occupants, sz.x, sz.y, sz.size, self.snake.x, self.snake.y)
 
         return self.snake, self.prey_list, self.safe_zone
 
