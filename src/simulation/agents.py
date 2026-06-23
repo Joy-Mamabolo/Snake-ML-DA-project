@@ -17,12 +17,12 @@ class Agent:
         self.actions = [(0,self.speed),(0,-self.speed),(self.speed,0),(-self.speed,0)] #Up, Down, Right, Left
         self.policy = policy
     
-    def move(self, dx, dy, grid_size):
+    def move(self, dx, dy):
         self.prev_x = self.x
         self.prev_y = self.y
 
-        self.x = max(0, min(grid_size-1, self.x + dx*self.speed))
-        self.y = max(0, min(grid_size-1, self.y + dy*self.speed))
+        self.x = self.x + dx*self.speed
+        self.y = self.y + dy*self.speed
     
     def propose_move(self, observation):
         

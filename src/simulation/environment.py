@@ -5,12 +5,13 @@
 # General imports
 import json
 import random
+from collections import defaultdict
 
 # Dependency imports
 from observations import Observation
 from agents import Snake, Prey
 from policy import GreedyPolicy, RandomPolicy, QlearningPolicy
-from rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active
+from rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active, boundary_collision
 
 
 # Global variables - TODO: Place these in a configuration file.
@@ -47,14 +48,42 @@ class SafeZone:
 
 class Game:
     def __init__(self, grid_size = GRID_SIZE, num_prey = NUM_PREY):
+
+        # world
         self.grid_size = grid_size
-        self.snake = Snake(grid_size//2, grid_size//2, GreedyPolicy())
+        self.walls = [] # Will hold a list of tuples of all walls.
+        self.build_world() # world_builder function that populates self.walls
+        self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
         
+        # agents
+        self.snake = Snake(grid_size//2, grid_size//2, GreedyPolicy())
         self.prey_list = self.build_prey_list(num_prey, NUM_LEARNING_PREY)
 
-        self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
+        # rewards description for ease of access and modification.
+        self.rewards = {"boundary_collision": -5,
+                        "unauthorized_sz_entry": -5,
+                        "capture": -10,
+                        "survival": 2,
+                        "survival_in_sz": 4}
+
+        # utility
         self.step_count = 0 # keep track of the number of steps taken in the game
     
+    def build_world(self, special_walls = []):
+        # Function populates the walls attribute of the world returning a list of tuples representing each tile that
+        # exists in the world.
+        # Current implementation is used for only outer boundaries, but function was built to scale if additional 
+        # obstacles are added to the world.
+
+        # Add outer boundary walls
+        for x in range(self.grid_size):
+            for y in range(self.grid_size):
+                self.walls.append((x,y))
+        
+        # Add special walls if defined where special walls are defined as a list of tuples
+        for x,y in special_walls:
+            self.walls.append((x,y))
+
 
     def build_prey_list(self, total_prey, num_learning):
         
@@ -69,68 +98,138 @@ class Game:
     # is_in_safezone function moved to rules.py. Replaced with necessary imports.
 
     # is_in_bounds function moved to rules.py. Replaced with necessary imports.
+    
+    def get_valid_moves(self, agent)->list:
 
-    def step(self):
-        # snake moves
-        self.step_count+=1
-        sdx,sdy = self.snake.propose_move(observation) # chase function determines the proposed move of the snake and game checks if the move is valid before executing it.
+        if agent == self.snake:
+            
+            actions = []
 
-        proposed_snake_x = self.snake.x + sdx
-        proposed_snake_y = self.snake.y + sdy
+            for act in agent.actions:
+                
+                # For all possible actions
 
-        #print(f"proposed_snake-x: {self.snake.x, sdx}\tproposed_snake_y: {self.snake.y, sdy}")
+                # Check attempted safe zone entry
+                for sz in self.safe_zone:
 
-        if is_in_bounds(proposed_snake_x, proposed_snake_y, self.grid_size):
-            for sz in self.safe_zone:
-                if (sz.active and sz.x <= proposed_snake_x < sz.x + sz.size and sz.y <= proposed_snake_y < sz.y + sz.size):
-                    #print("Safe Zone Entry prevention")
-                    self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-                    # self.snake.move(0, 0) # if proposed move is into an active safe zone, stay in place. Would like to consider other options later.
-                    # Alternative implementation of what happens after invalid move
-
-                    if self.snake.x ==sz.x or self.snake.x==sz.x+sz.size: 
-                        # stuck on left or right wall of safe zone, move either up or down
-                        if self.snake.y >= sz.y+sz.size//2:
-                            # more than half way up - go up (assuming wall is sketched from bottom left corner)
-                            self.snake.move(0,self.snake.speed, self.grid_size)
-                        else:
-                            # less than half way up - go down
-                            self.snake.move(0, -self.snake.speed, self.grid_size)
-                    else:
-                        # stuck on top or bottom wall of safe zone, move either left or right
-                        if self.snake.x >= sz.x+sz.size//2:
-                            # more than half way right, go right
-                            self.snake.move(self.snake.speed,0, self.grid_size)
-                        else:
-                            # less than half way right, go left
-                            self.snake.move(-self.snake.speed, 0, self.grid_size)
+                    if sz.active and is_in_safe_zone(sz.x, sz.y, sz.size, agent.x+act[0], agent.y+act[1]):
+                        # attempted to enter an active safe zone - prevent invalid move
+                        break
                 else:
-                    self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-                    self.snake.move(sdx, sdy, self.grid_size) # proposed move is valid, execute it
+                    # check wall interaction only if cleared safe zone checks
+
+                    if not boundary_collision(self.walls, agent.x+act[0], agent.y+act[1]):
+                        # Only append action after boundary_collision checked.
+                        actions.append(act)
+
+            return actions
+
         else:
-            self.snake.prev_x, self.snake.prev_y = self.snake.x, self.snake.y
-            #self.snake.move(0, 0) # if proposed move is out of bounds, stay in place. Would like to consider other options such as bouncing back or wrapping around later.
+            # All prey actions attract a reward and are therefore not restricted by the environment
+            return agent.actions
 
-            # Alternative motion instead of snake not moving - though I don't think this is a likely occurence
-            if self.snake.x ==0 or self.snake.x==self.grid_size-1: 
-                # stuck on left or right wall of safe zone, move either up or down
+    def build_observation(self, agent=None):
+        # Build observations for all agents in the game.
+        
+        candidate_moves = self.get_valid_moves(agent)
 
-                if self.snake.y >= self.grid_size//2:
-                    # more than half way up - go up (assuming wall is sketched from bottom left corner)
-                    self.snake.move(0,self.snake.speed, self.grid_size)
+        return Observation(
+            snake_position = (self.snake.x, self.snake.y),
+            prey_list = self.prey_list,
+            wall_position = self.walls, # Currently implemented for boundary walls to make scaling to more complex geometries easier.
+            grid_size = self.grid_size,
+            sz_list = self.safe_zone,
+            valid_moves = candidate_moves
+        )
+    
+    def get_actions(self, snake_obs, prey_obs):
+        # Get proposed actions for all agents based on the current observation.
+
+        actions = {}
+
+        actions[self.snake] = self.snake.propose_move(snake_obs)
+        
+        for prey in self.prey_list:
+            actions[prey] = prey.propose_move(prey_obs)
+        
+        return actions
+
+    def enforce_actions(self, actions):
+        # Enforce the proposed actions for all agents. This function checks if proposed actions are valid and executes them. It imposes alternative actions if proposed actions are invalid. 
+        # Function does not return anything, but updates the state of the game in place.
+        
+        events = defaultdict(list) # to be used for reward allocations
+
+        for agent, action in actions.items():
+
+            if boundary_collision(self.walls, agent.x+action[0], agent.y+action[1]):
+                events[agent].append("boundary_collision")
+                agent.move(0,0)
+            
+            if agent == self.snake:
+                
+                # implement the safe_zone check   
+                for sz in self.safe_zone:
+                    if is_in_safe_zone(sz.x, sz.y, sz.size, agent.x+action[0],agent.y+action[1]):
+                        events[agent].append("Unauthorized_SZ_entry")
+                        agent.move(0,0)
+                        break
                 else:
-                    # less than half way up - go down
-                    self.snake.move(0, -self.snake.speed, self.grid_size)
+                    agent.move(action[0],action[1])
             else:
-                # stuck on top or bottom wall of safe zone, move either left or right
+                agent.move(action[0],action[1])
 
-                if self.snake.x >= self.grid_size//2:
-                    # more than half way right, go right
-                    self.snake.move(self.snake.speed,0, self.grid_size)
-                else:
-                    # less than half way right, go left
-                    self.snake.move(-self.snake.speed, 0, self.grid_size)
+        return events         
+            
+    def detect_events(self, events:dict):
+        # events is a dictionary that has illegal move events populated if there were any
+        # The intent of this function is to remaining events which also attract rewards for learning agents.
+        # These include survival, survival in safe zone, and captures
 
+
+        return events
+    
+    def assign_rewards(self, all_events:dict):
+        # Function takes the reward dictionary and assigns rewards to all the agents that have rewards due
+        # The reward values are defined in the game constructor for ease of access and modification.
+        # The result will be used for learning for the agents that have the capability
+        # Note that rewards are computed for all agents, whether they have learning functionality or not.
+        # This is so that should their policies change in the future, the reward assignment system will not need to be changed much.
+        
+        rewards = defaultdict(int) # some agents may be due for more than one reward, for instance for boundary_collision + capture in the same turn
+
+        for agent, events in all_events.items():
+
+            for event in events:
+                rewards[agent]+=self.rewards[event]
+        
+        return rewards
+
+    
+    def step(self):
+
+        self.step_count+=1
+
+        # build observation for all agents based on current state of the game. This is done before any agent moves so that all agents make decisions based on a single source of truth.
+        snake_obs = self.build_observation(self.snake)
+        prey_obs = self.build_observation() # does not need to add agent argument, default is fine
+
+        # agents propose moves
+        proposed_actions = self.get_actions(snake_obs, prey_obs)
+
+        # enforce moves based on rules and generate events of invalid moves
+        events = self.enforce_actions(proposed_actions) # invalid move events
+
+        # detect other events
+        all_events = self.detect_events(events)
+
+        # calculate rewards
+        rewards = self.assign_rewards(all_events)
+
+        # TODO: Use rewards to update Q table
+
+
+        #TODO: Implement update_q_table and delete whole section below. It will then be redundant
         #prey moves/acts
         for prey in self.prey_list:
             
@@ -182,12 +281,12 @@ class Game:
 
                 if is_in_bounds(prey.x + dx, prey.y + dy, self.grid_size):
                     # Cannot assign reward here because it is possible that this move results in capture
-                    prey.move(dx, dy, grid_size = self.grid_size)
+                    prey.move(dx, dy)
 
                     # update old_state to actual current state and not potential as was the case for next state
                     # prey.old_state = prey.observe(self) # This is not supposed to be updated here as it overwrites the old_state that is meant to be used for the reward update after the move is executed. When it is going to be updated will be confirmed.
                 else:
-                    prey.move(0, 0, grid_size = self.grid_size) # if proposed move is out of bounds, stay in place
+                    prey.move(0, 0) # if proposed move is out of bounds, stay in place
                     prey.last_act = (0,0) # reset last act since the proposed move was not executed. This also prevents the prey from being rewarded for a move that was not actually executed.
                     
                     if prey.learning:

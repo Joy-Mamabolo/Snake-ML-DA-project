@@ -9,7 +9,7 @@ import random # will later import from an rng.py file that will handle seeding
 
 class GreedyPolicy:
 
-    def choose_action(self, observation, agent):
+    def propose_action(self, agent, observation):
         closest_prey = None
         min_distance = float('inf')
 
@@ -36,6 +36,40 @@ class GreedyPolicy:
                 return (0, agent.speed) if closest_prey.y>=agent.y else (0, -agent.speed)
         else:
             return 0, 0 # if there are no prey, stay in place - should not be the case since the game should end when all prey are captured
+        
+    
+    def alternate_move(self, agent, observation):
+        
+        # Function is called when the Greedy Algorithm recommends a move that is currently not valid.
+        # This scenario is likely to happen when the snake attempts to go into a safe zone while it is active.
+        # In more complex world geometries, this can also happen if prey sits behind a wall and snake attempts to go
+        # towards the prey.
+        # The implementation is simplified in order to avoid duplicating world rules into the policy.py file.
+        # The snake will move parallel to the obstacle in the direction of the largest open world.
+        # This means if the snake is in the bottom half of the map, it will move towards the top for example.
+        # This assumes simple obstacles where prohibition in one direction means the lateral direction is not prohibited.
+        # Code will need to be updated when environment obstacles become more complex than this.
+
+        if (0,1) not in observation.valid_moves or (0, -1) not in observation.valid_moves:
+            # Right or left move prohibited - which means vertical motion is parallel
+
+            return (agent.speed,0) if agent.y<=observation.grid_size//2 else (-agent.speed,0)
+        else:
+            # Up or down move prohibited - which means horizontal motion is parallel
+
+            return (0,agent.speed) if agent.x<=observation.grid_size//2 else (-agent.speed,0)
+
+    def choose_action(self, agent, observation):
+
+        action = self.propose_action(agent, observation)
+
+        if action not in observation.valid_moves:
+
+            return self.alternate_move(agent, observation)
+        
+        return action
+
+
 
 class RandomPolicy:
     
@@ -84,8 +118,9 @@ class QlearningPolicy:
 
         self.q_table[(state, action)] = new_q
     
-    def choose_action(self, state, agent):
+    def choose_action(self, observation, agent):
 
+        state = self.build_state(observation)
         # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
 
         # Determine if we consult q-table or explore using epsilon
@@ -120,5 +155,9 @@ class QlearningPolicy:
             
             
         return last_act, state
+
+    def build_state(self, observation):
+
+        return f""
             
 
