@@ -118,10 +118,24 @@ class QlearningPolicy:
 
         self.q_table[(state, action)] = new_q
     
-    def choose_action(self, observation, agent):
+    def learn(self, agent, reward, observation, next_observation):
 
-        state = self.build_state(observation)
-        # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table. Not implemented yet.
+        state = self.build_state(agent, observation)
+        next_state = self.build_state(agent, next_observation)
+
+        # Get last action
+        action = self.get_last_action(agent)
+        actions = agent.actions
+
+        # Update q-table
+        self.update_q_table(state, action,actions,reward,next_state)
+        
+
+        
+    def choose_action(self, agent, observation):
+
+        state = self.build_state(agent,observation)
+        # Observe the world and update the Q-table based on the reward received from the previous action. Then select an action based on the Q-table.
 
         # Determine if we consult q-table or explore using epsilon
         if random.random()<self.epsilon:
@@ -129,7 +143,7 @@ class QlearningPolicy:
             candidate = [random.choice(agent.actions)] # made it a list for consistency
         else:
             # Be principled - consult your q-table
-            candidate = [(0,0)] # default value although it should not be necessary  TODO: Remove default candidate value. It is guaranteed that there will be at least one action with a q-value of at least 0.0
+            candidate = [] # default value although it should not be necessary  TODO: Remove default candidate value. It is guaranteed that there will be at least one action with a q-value of at least 0.0
             threshold = 0.0
 
             for action in agent.actions:
@@ -148,16 +162,30 @@ class QlearningPolicy:
             # Make final choice randomly if more than one decision possible
         if len(candidate)>1:
             # more than one best move
-            last_act= random.choice(candidate)
+            act = random.choice(candidate)
         else:
             # Only one answer
-            last_act= candidate[0] # tuple not list
+            act = candidate[0] # candidate is a list containing a tuple
             
             
-        return last_act, state
+        return act
 
-    def build_state(self, observation):
+    def build_state(self, agent, observation):
 
         return f""
+
+    def get_last_action(self, agent):
+
+        """ Function uses current agent position and previous agent position to determine last action.
+            Function set up in such a way that it can be used for snakes, however, the current implementation
+            would only return the enforced action and not the snake's proposed action, meanwhile the agent's last_act
+            gives the proposed action whether or not it was actually implemented. It is this action that must be rewarded
+            and not the enforced action.
+            TODO: Stress test for what happens around captures and respawns
+        """
+        if agent.symbol == "P":
+            return agent.last_act
+        else:
+            return (agent.x - agent.prev_x, agent.y - agent.prev_y)
             
 

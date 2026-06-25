@@ -30,6 +30,24 @@ SURVIVOR = 1
 SAFE_SURVIVOR = 2
 BOUNDARY = -5
 
+# Could potentially be moved else where later
+class Custom_Error(Exception):
+    """ Base Class for custom errors 
+    """
+    pass
+
+class World_Building_Error(Custom_Error):
+    """ The intent of this class is to capture world building errors and interrupt the simulation.
+        These can include: 
+            > gaps in the outer boundary which could allow some to cause index errors by moving into 
+            spaces beyond the allocated array space.
+            > respawn zone overlaps with any existing walls (special or boundary)
+    """
+    def __init__(self):
+        pass
+
+
+
 # Implementation
 class SafeZone:
     def __init__(self, x, y, size = SZ_SIZE, capacity = SZ_CAP):
@@ -52,8 +70,10 @@ class Game:
         # world
         self.grid_size = grid_size
         self.walls = [] # Will hold a list of tuples of all walls.
+        self.spawn_zones = []
         self.build_world() # world_builder function that populates self.walls
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
+        
         
         # agents
         self.snake = Snake(grid_size//2, grid_size//2, GreedyPolicy())
@@ -69,7 +89,7 @@ class Game:
         # utility
         self.step_count = 0 # keep track of the number of steps taken in the game
     
-    def build_world(self, special_walls = []):
+    def build_world(self, special_walls = [], spawn_zones = []):
         # Function populates the walls attribute of the world returning a list of tuples representing each tile that
         # exists in the world.
         # Current implementation is used for only outer boundaries, but function was built to scale if additional 
@@ -84,6 +104,43 @@ class Game:
         for x,y in special_walls:
             self.walls.append((x,y))
 
+        # Add designated spawn zones for prey. These zones are for ease of deciding respawn points for prey.
+        # This will be especially useful when the map geometry becomes more complex
+        # If spawn_zones are not specified, the default will be assumed to be the 4 corner areas of the square map.
+        # spawn_zones are specified as a list of tuples(x,y) each representing a possible respawning coordinate.
+        # This will make complex respawning area geometry possible
+        
+        try:
+            if spawn_zones:
+
+                for x,y in spawn_zones:
+
+                    if boundary_collision(self.walls, x,y):
+                        raise World_Building_Error
+                    else:
+                        self.spawn_zones.append((x,y))
+
+            else:
+                
+                for x,y in [(0,0),(0,self.grid_size), (self.grid_size, 0), (self.grid_size, self.grid_size)]:
+
+                    for i in range(1,3):
+
+                        if x:
+                            i = -i
+
+                        for j in range(1,3):
+                            
+                            if y:
+                                j = -j
+
+                            if boundary_collision(self.walls, x+i,y+j):
+                                raise World_Building_Error
+                            else:
+                                self.spawn_zones.append((x+i,y+j))
+
+        except World_Building_Error:
+                print("Spawn zone overlaps with an existing wall")
 
     def build_prey_list(self, total_prey, num_learning):
         
@@ -94,6 +151,20 @@ class Game:
             prey_list.append(Prey(random.randint(0, self.grid_size-1), random.randint(0, self.grid_size-1), QlearningPolicy()))
         
         return prey_list
+    
+    def agent_spawn(self, prey_list):
+
+        for agent in prey_list:
+
+            # Function handles prey respawning after captures.
+            # It assigns the value directly and does not return anything.
+
+            if agent.alive == False: 
+                # if the agent is prey (for future scaling)
+
+                # More sophisticated implementation is possible, like furthest from current position, but this is sufficient for now.
+                agent.x,agent.y = random.choice([(i,j) for i,j in self.spawn_zones])
+
 
     # is_in_safezone function moved to rules.py. Replaced with necessary imports.
 
@@ -183,8 +254,13 @@ class Game:
             
     def detect_events(self, events:dict):
         # events is a dictionary that has illegal move events populated if there were any
-        # The intent of this function is to remaining events which also attract rewards for learning agents.
+        # The intent of this function is to add remaining events which also attract rewards for learning agents.
         # These include survival, survival in safe zone, and captures
+
+        #TODO: Implement!
+        # check for captures
+
+        # Check for survival and survival in safe zone
 
 
         return events
@@ -204,11 +280,31 @@ class Game:
                 rewards[agent]+=self.rewards[event]
         
         return rewards
+    
+    def update_learning(self, rewards, observations: tuple, next_observations: tuple):
+
+        # Function updates the learning agents with the rewards they are due.
+        # The function assumes no knowledge of learning and non-learning agents and accommodates both.
+        # The observation and next_observation tuples are in the order of snake first then prey in both cases.
+        # It is worth noting, however, that in the current implementation, only the prey has learning functionality.
+
+        for agent, val in rewards.items():
+
+            if hasattr(agent.policy, "learn"):
+
+                if agent == self.snake:
+                    agent.policy.learn(agent, val, observations[0], next_observations[0])
+                else:
+                    agent.policy.learn(agent, val, observations[1], next_observations[1])
+        
 
     
     def step(self):
 
         self.step_count+=1
+
+        # Respawn any captured prey
+        self.agent_spawn(self.prey_list)
 
         # build observation for all agents based on current state of the game. This is done before any agent moves so that all agents make decisions based on a single source of truth.
         snake_obs = self.build_observation(self.snake)
@@ -226,10 +322,14 @@ class Game:
         # calculate rewards
         rewards = self.assign_rewards(all_events)
 
-        # TODO: Use rewards to update Q table
+        # Use rewards to update Q table
+        next_snake_obs = self.build_observation(self.snake)
+        next_prey_obs = self.build_observation()
 
+        self.update_learning(rewards, (snake_obs, prey_obs), (next_snake_obs, next_prey_obs))
 
-        #TODO: Implement update_q_table and delete whole section below. It will then be redundant
+        # TODO: Implement update_q_table and delete whole section below. It will then be redundant
+
         #prey moves/acts
         for prey in self.prey_list:
             
