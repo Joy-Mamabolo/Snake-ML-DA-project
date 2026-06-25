@@ -27,9 +27,26 @@ def is_in_bounds(x, y, grid_size):
 
 def boundary_collision(walls: list, agent_x:int, agent_y:int):
 
-    # This function will eventually be used to determine if there is a collision (attempted or actual) with walls by
-    # agents. It will also be adapted to include the is_in_bounds functionality as this function is more general and
-    # scales better
+    """This function will eventually be used to determine if there is a collision (attempted or actual) with walls by
+       agents. It will also be adapted to include the is_in_bounds functionality as this function is more general and
+       scales better """
 
-    # collision between moving and stationary entities
+    # collision between moving and stationary entities (walls)
     return True if (agent_x,agent_y) in walls else False
+
+def agent_collision(agent_1, agent_2):
+    """Function will be primarily used to detect if a capture happened, although it is built in such a way that
+       it will detect all collisions should that be desired."""
+    
+    if (agent_1.x==agent_2.x and agent_1.y == agent_2.y) or (agent_1.x == agent_2.prev_x and agent_1.y==agent_2.prev_y 
+                                                             and
+                                                             agent_1.prev_x == agent_2.x and agent_1.prev_y == agent_2.y):
+        
+        # First logical check happens when two agents are occupying the same square
+        # Second logical check happens when two agents swap positions in a manner differentiated from following - ie.
+        # it is only possible for this to happen by colliding in infinitesimal time (step)
+
+        return True
+    else:
+        return False
+        

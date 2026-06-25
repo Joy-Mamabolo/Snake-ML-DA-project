@@ -11,7 +11,7 @@ from collections import defaultdict
 from observations import Observation
 from agents import Snake, Prey
 from policy import GreedyPolicy, RandomPolicy, QlearningPolicy
-from rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active, boundary_collision
+from rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active, boundary_collision, agent_collision
 
 
 # Global variables - TODO: Place these in a configuration file.
@@ -43,8 +43,12 @@ class World_Building_Error(Custom_Error):
             spaces beyond the allocated array space.
             > respawn zone overlaps with any existing walls (special or boundary)
     """
-    def __init__(self):
-        pass
+    def __init__(self, x, y):
+
+        self.message = f"Respawn zone tile and wall tile overlap at {x,y}"
+    
+    def get_message(self):
+        return self.message
 
 
 
@@ -80,20 +84,21 @@ class Game:
         self.prey_list = self.build_prey_list(num_prey, NUM_LEARNING_PREY)
 
         # rewards description for ease of access and modification.
-        self.rewards = {"boundary_collision": -5,
-                        "unauthorized_sz_entry": -5,
-                        "capture": -10,
-                        "survival": 2,
-                        "survival_in_sz": 4}
+        self.rewards = {"boundary_collision": BOUNDARY,
+                        "unauthorized_sz_entry": BOUNDARY,
+                        "capture": CAPTURE,
+                        "survival": SURVIVOR,
+                        "survival_in_sz": SAFE_SURVIVOR}
 
         # utility
         self.step_count = 0 # keep track of the number of steps taken in the game
     
     def build_world(self, special_walls = [], spawn_zones = []):
-        # Function populates the walls attribute of the world returning a list of tuples representing each tile that
-        # exists in the world.
-        # Current implementation is used for only outer boundaries, but function was built to scale if additional 
-        # obstacles are added to the world.
+        """
+        Function populates the walls attribute of the world returning a list of tuples representing each tile that
+        exists in the world.
+        Current implementation is used for only outer boundaries, but function was built to scale if additional 
+        obstacles are added to the world."""
 
         # Add outer boundary walls
         for x in range(self.grid_size):
@@ -104,11 +109,12 @@ class Game:
         for x,y in special_walls:
             self.walls.append((x,y))
 
-        # Add designated spawn zones for prey. These zones are for ease of deciding respawn points for prey.
-        # This will be especially useful when the map geometry becomes more complex
-        # If spawn_zones are not specified, the default will be assumed to be the 4 corner areas of the square map.
-        # spawn_zones are specified as a list of tuples(x,y) each representing a possible respawning coordinate.
-        # This will make complex respawning area geometry possible
+        """
+        Add designated spawn zones for prey. These zones are for ease of deciding respawn points for prey.
+        This will be especially useful when the map geometry becomes more complex
+        If spawn_zones are not specified, the default will be assumed to be the 4 corner areas of the square map.
+        spawn_zones are specified as a list of tuples(x,y) each representing a possible respawning coordinate.
+        This will make complex respawning area geometry possible"""
         
         try:
             if spawn_zones:
@@ -116,7 +122,7 @@ class Game:
                 for x,y in spawn_zones:
 
                     if boundary_collision(self.walls, x,y):
-                        raise World_Building_Error
+                        raise World_Building_Error(x,y)
                     else:
                         self.spawn_zones.append((x,y))
 
@@ -135,12 +141,12 @@ class Game:
                                 j = -j
 
                             if boundary_collision(self.walls, x+i,y+j):
-                                raise World_Building_Error
+                                raise World_Building_Error(x+i,y+j)
                             else:
                                 self.spawn_zones.append((x+i,y+j))
 
         except World_Building_Error:
-                print("Spawn zone overlaps with an existing wall")
+                print(World_Building_Error.get_message)
 
     def build_prey_list(self, total_prey, num_learning):
         
@@ -161,6 +167,9 @@ class Game:
 
             if agent.alive == False: 
                 # if the agent is prey (for future scaling)
+                agent.alive = True
+                agent.last_act = (0,0) # Default value after spawning (representing a diagonal move which is not permitted)
+                agent.generation+=1 # Counter for number of captures
 
                 # More sophisticated implementation is possible, like furthest from current position, but this is sufficient for now.
                 agent.x,agent.y = random.choice([(i,j) for i,j in self.spawn_zones])
@@ -200,7 +209,7 @@ class Game:
             return agent.actions
 
     def build_observation(self, agent=None):
-        # Build observations for all agents in the game.
+        """Build observations for all agents in the game."""
         
         candidate_moves = self.get_valid_moves(agent)
 
@@ -214,7 +223,7 @@ class Game:
         )
     
     def get_actions(self, snake_obs, prey_obs):
-        # Get proposed actions for all agents based on the current observation.
+        """Get proposed actions for all agents based on the current observation."""
 
         actions = {}
 
@@ -222,12 +231,18 @@ class Game:
         
         for prey in self.prey_list:
             actions[prey] = prey.propose_move(prey_obs)
+
+            """ This is to keep record of prey's proposed move which will be used to assign the reward in scenarios where
+                the game class enforces a different move due to an illegal proposed move
+            """
+            prey.last_act = actions[prey] 
         
         return actions
 
     def enforce_actions(self, actions):
-        # Enforce the proposed actions for all agents. This function checks if proposed actions are valid and executes them. It imposes alternative actions if proposed actions are invalid. 
-        # Function does not return anything, but updates the state of the game in place.
+        """
+        Enforce the proposed actions for all agents. This function checks if proposed actions are valid and executes them. It imposes alternative actions if proposed actions are invalid. 
+        Function does not return anything, but updates the state of the game in place."""
         
         events = defaultdict(list) # to be used for reward allocations
 
@@ -242,7 +257,7 @@ class Game:
                 # implement the safe_zone check   
                 for sz in self.safe_zone:
                     if is_in_safe_zone(sz.x, sz.y, sz.size, agent.x+action[0],agent.y+action[1]):
-                        events[agent].append("Unauthorized_SZ_entry")
+                        events[agent].append("unauthorized_sz_entry")
                         agent.move(0,0)
                         break
                 else:
@@ -253,24 +268,55 @@ class Game:
         return events         
             
     def detect_events(self, events:dict):
-        # events is a dictionary that has illegal move events populated if there were any
-        # The intent of this function is to add remaining events which also attract rewards for learning agents.
-        # These include survival, survival in safe zone, and captures
+        """
+        events is a dictionary that has illegal move events populated if there were any
+        The intent of this function is to add remaining events which also attract rewards for learning agents.
+        These include survival, survival in safe zone, and captures.
+        It should be noted that the values of events are lists which should be appended to in the event that
+        more than one event is possible for an agent - for instance illegal move + capture"""
 
-        #TODO: Implement!
         # check for captures
+        for prey in self.prey_list:
 
-        # Check for survival and survival in safe zone
+            if agent_collision(self.snake,prey):
 
+                # Mark prey as captured
+                prey.alive = False
+
+                # Update events
+                if prey in events:
+                    events[prey].append("capture")
+                else:
+                    events[prey] = ["capture"]
+
+            else:
+                # Check for survival and survival in safe zone
+                
+                for sz in self.safe_zone:
+
+                    if sz.active and is_in_safe_zone(sz.x, sz.y, sz.size, prey.x, prey.y):
+                        # event only applicable if sz is active
+                        if prey in events:
+                            events[prey].append("survival_in_sz")
+                        else:
+                            events[prey] = ["survival_in_sz"]
+                        break
+                else:
+                    # Executes if break in for loop not triggered
+                    if prey in events:
+                        events[prey].append("survival")
+                    else:
+                        events[prey] = ["survival"]
 
         return events
     
     def assign_rewards(self, all_events:dict):
-        # Function takes the reward dictionary and assigns rewards to all the agents that have rewards due
-        # The reward values are defined in the game constructor for ease of access and modification.
-        # The result will be used for learning for the agents that have the capability
-        # Note that rewards are computed for all agents, whether they have learning functionality or not.
-        # This is so that should their policies change in the future, the reward assignment system will not need to be changed much.
+        """
+        Function takes the reward dictionary and assigns rewards to all the agents that have rewards due
+        The reward values are defined in the game constructor for ease of access and modification.
+        The result will be used for learning for the agents that have the capability
+        Note that rewards are computed for all agents, whether they have learning functionality or not.
+        This is so that should their policies change in the future, the reward assignment system will not need to be changed much. """
         
         rewards = defaultdict(int) # some agents may be due for more than one reward, for instance for boundary_collision + capture in the same turn
 
@@ -283,10 +329,12 @@ class Game:
     
     def update_learning(self, rewards, observations: tuple, next_observations: tuple):
 
-        # Function updates the learning agents with the rewards they are due.
-        # The function assumes no knowledge of learning and non-learning agents and accommodates both.
-        # The observation and next_observation tuples are in the order of snake first then prey in both cases.
-        # It is worth noting, however, that in the current implementation, only the prey has learning functionality.
+        """
+        Function updates the learning agents with the rewards they are due.
+        The function assumes no knowledge of learning and non-learning agents and accommodates both.
+        The observation and next_observation tuples are in the order of snake first then prey in both cases.
+        It is worth noting, however, that in the current implementation, only the prey has learning functionality.
+        """
 
         for agent, val in rewards.items():
 
@@ -297,6 +345,20 @@ class Game:
                 else:
                     agent.policy.learn(agent, val, observations[1], next_observations[1])
         
+    def sz_admissions(self):
+
+        for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
+
+            sz.current_occupants = 0 # must reset in every step so that it keeps the current count and not total count
+
+            # Set safe zone to off as soon as snake is inside, even if snake spawned there. Alternatively prohibit snake from spawning in sz
+
+            for prey in self.prey_list:
+                if is_in_safe_zone(sz.x, sz.y, sz.size, prey.x, prey.y):
+                    sz.current_occupants +=1
+
+            sz.active = is_safe_zone_active(sz.capacity, sz.current_occupants, sz.x, sz.y, sz.size, self.snake.x, self.snake.y)
+
 
     
     def step(self):
@@ -305,6 +367,9 @@ class Game:
 
         # Respawn any captured prey
         self.agent_spawn(self.prey_list)
+
+        # Safe Zone admissions
+        self.sz_admissions()
 
         # build observation for all agents based on current state of the game. This is done before any agent moves so that all agents make decisions based on a single source of truth.
         snake_obs = self.build_observation(self.snake)
@@ -327,85 +392,8 @@ class Game:
         next_prey_obs = self.build_observation()
 
         self.update_learning(rewards, (snake_obs, prey_obs), (next_snake_obs, next_prey_obs))
-
-        # TODO: Implement update_q_table and delete whole section below. It will then be redundant
-
-        #prey moves/acts
-        for prey in self.prey_list:
-            
-            if not prey.alive:
-                # Captured Prey Respawns
-                prey.x = 0 if self.snake.x>self.grid_size-1-self.snake.x else self.grid_size-1  # furthest distance away from the snake within bounds at that step.
-                prey.y = 0 if self.snake.y>self.grid_size-1-self.snake.y else self.grid_size-1
-                prey.generation+=1
-                prey.alive = True
-                prey.last_act = (0,0) # reset last act. It has already been used to update q table in the previous generation.
-            
-
-            elif (prey.x == self.snake.x and prey.y == self.snake.y) or (prey.x == self.snake.prev_x and prey.y == self.snake.prev_y):
-                # Prey captured
-
-                if prey.learning:
-                    # update q-table with capture reward for only learning prey
-                    prey.update_q_table(prey.old_state,prey.last_act,CAPTURE) # omit next_state since it will evaluate next_q to 0.0 by default as the next state after capture cannot be confirmed.
-                
-                prey.alive = False # repositioned to after update_q_table
-
-                # self.prey_list.remove(prey) # remove captured prey from the game. Perhaps prey should not be removed from list, but respawned some safe distance away from snake and log the capture instead
-            else:
-                # Prey moves
-
-                if prey.learning:
-                    #Reward survival first:
-                    if prey.last_act != (0,0):
-                        # Not initial spawn or respawn, meaning prey survived
-                        # update q-table showing survival before new observation in propose_move updates the current_state
-                        #act, next_state = prey.propose_move(self, True) # A new move is not actually meant to be proposed yet. In order to define next_state, we only need to evaluate the state now after the prey has moved which is not the same as the prey.old_state.
-                        next_state = prey.observe(self) # This is the next state after surviving the last action, but before proposing the next action. It is used to update the q-table with the survival reward for the last action. The proposed move is not actually executed until after the q-table update.
-
-                        prey.update_q_table(prey.old_state,prey.last_act,SAFE_SURVIVOR if "+" in prey.old_state else SURVIVOR,next_state)
-
-                        # update last act
-                        # prey.last_act = act moved out of here to preserve the reward update functionality only and not mix it with action proposal.
-
-                    else:
-                        # new spawn or respawn about to move for the first time.
-                        pass # no reward
-
-                    prey.last_act,prey.old_state = prey.propose_move(self) # Now applies to all learning prey whether it is the first move after spawn/respawn or not.
-
-                else:
-                    prey.last_act,_ = prey.propose_move(self)
-                
-                dx,dy = prey.last_act
-
-                if is_in_bounds(prey.x + dx, prey.y + dy, self.grid_size):
-                    # Cannot assign reward here because it is possible that this move results in capture
-                    prey.move(dx, dy)
-
-                    # update old_state to actual current state and not potential as was the case for next state
-                    # prey.old_state = prey.observe(self) # This is not supposed to be updated here as it overwrites the old_state that is meant to be used for the reward update after the move is executed. When it is going to be updated will be confirmed.
-                else:
-                    prey.move(0, 0) # if proposed move is out of bounds, stay in place
-                    prey.last_act = (0,0) # reset last act since the proposed move was not executed. This also prevents the prey from being rewarded for a move that was not actually executed.
-                    
-                    if prey.learning:
-                        prey.update_q_table(prey.old_state, prey.last_act,BOUNDARY, prey.old_state) # next state is the same as old state since prey does not move.
         
-        # check safe zone admissions
-        for sz in self.safe_zone: # there is only one safe zone for now but this allows for more than one should we wish
-
-            sz.current_occupants = 0 # must reset in every step so that it keeps the current count and not total count
-
-            # Set safe zone to off as soon as snake is inside, even if snake spawned there. Alternatively prohibit snake from spawning in sz
-
-            for prey in self.prey_list:
-                if is_in_safe_zone(sz.x, sz.y, sz.size, prey.x, prey.y):
-                    sz.current_occupants +=1
-
-            sz.active = is_safe_zone_active(sz.capacity, sz.current_occupants, sz.x, sz.y, sz.size, self.snake.x, self.snake.y)
-
-        return self.snake, self.prey_list, self.safe_zone
+        return all_events
 
     def game_write_to_file(self):
         # Save the current game to a file for later analysis.
