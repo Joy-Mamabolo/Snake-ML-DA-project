@@ -37,6 +37,23 @@ A game state dictionary holds some of the states of the different objects and is
         - "S": snake
         - ".": empty cell/no occupant
         - "XXX": boundary/wall
+    
+    - Update: The initial state design was too localized for agents to learn to make strategic use of safe zones as
+              they had no way of locating them, and the signal for relative safety in the safe zone was too weak.
+              Another change was obscurring of prey positions and representing them in nearest safe zone occupancy measures, which is the best use-case for the learning agent. Care was taken to ensure state length is consistent in all possible scenarios. 
+        The following information is, now, encoded in the state string:
+        1. The agent's (prey) current position (x,y)
+        2. The position of the snake if it is in its immediate vicinity (3x3 grid around the agent)
+        3. Any wall tiles in the agent's immediate vicinity.
+        4. The position of any safe zone tiles in the agent's immediate vicinity.
+        5. A flag indicating whether the nearest safe zone is active or not.
+        6. Distance to the nearest safe zone in bucket ranges (e.g. 0-2, 3-5, 6+ indicated as close, medium, far). The exact ranges may be changed based on the size of the grid in future.
+        7. A direction pointer to the nearest safe zone (i.e. N, E, S, W) based on the longest distance and relative position of the agent to the safe zone. 
+           e.g. if safe zone is 2 units right and 4 units down relative to the agent, the direction pointer will be S. If 4 and 2 are swapped around, the resulting direction pointer will be E. 
+           If the distances are equal, whichever direction is determined first will be used. 
+        8. A measure of the occupancy of the safe zone in ranges (e.g. 0%-30%, 30%-60%, 60%-90%, >90% indicated as low, medium, high, critical). The exact ranges may be changed in future. 
+        The following is the structure of the state string:
+        - '{3x3 grid details showing what is in the immediate vicinity}|{SZ_distance}|{SZ_direction}|{SZ_occupancy}|{SZ_active}'
 - Reward profile - The following reward profile is being used and will be captured as global variables so that all changes can happen there should changes be required:
     - capture : -10
     - boundary collision: -5

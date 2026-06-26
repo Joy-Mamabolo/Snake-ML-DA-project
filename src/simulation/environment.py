@@ -73,7 +73,7 @@ class Game:
 
         # world
         self.grid_size = grid_size
-        self.walls = [] # Will hold a list of tuples of all walls.
+        self.walls = set() # Will hold a set of tuples of all walls. Made these sets, since overlaps are redundant. This will make membership checks quicker.
         self.spawn_zones = []
         self.build_world() # world_builder function that populates self.walls
         self.safe_zone = [SafeZone(5, 5)] # x,y of safe zone represents bottom left corner
@@ -98,24 +98,25 @@ class Game:
         Function populates the walls attribute of the world returning a list of tuples representing each tile that
         exists in the world.
         Current implementation is used for only outer boundaries, but function was built to scale if additional 
-        obstacles are added to the world."""
-
-        # Add outer boundary walls
-        for x in range(self.grid_size):
-            for y in range(self.grid_size):
-                self.walls.append((x,y))
+        obstacles are added to the world.
         
-        # Add special walls if defined where special walls are defined as a list of tuples
-        for x,y in special_walls:
-            self.walls.append((x,y))
-
-        """
         Add designated spawn zones for prey. These zones are for ease of deciding respawn points for prey.
         This will be especially useful when the map geometry becomes more complex
         If spawn_zones are not specified, the default will be assumed to be the 4 corner areas of the square map.
         spawn_zones are specified as a list of tuples(x,y) each representing a possible respawning coordinate.
-        This will make complex respawning area geometry possible"""
+        This will make complex respawning area geometry possible
+        """
+
+        # Add outer boundary walls - Currently only supports square maps
+        for x in range(self.grid_size):
+            for y in range(self.grid_size):
+                self.walls.add((x,y))
         
+        # Add special walls if defined where special walls are defined as a list of tuples
+        for x,y in special_walls:
+            self.walls.add((x,y))
+
+        # Add spawn zones
         try:
             if spawn_zones:
 

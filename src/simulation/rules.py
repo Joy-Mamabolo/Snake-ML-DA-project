@@ -25,7 +25,7 @@ def is_safe_zone_active(sz_capacity, sz_occupancy, sz_x, sz_y, sz_size, snake_x,
 def is_in_bounds(x, y, grid_size):
     return False if x < 0 or x >= grid_size or y < 0 or y >= grid_size else True
 
-def boundary_collision(walls: list, agent_x:int, agent_y:int):
+def boundary_collision(walls: set, agent_x:int, agent_y:int):
 
     """This function will eventually be used to determine if there is a collision (attempted or actual) with walls by
        agents. It will also be adapted to include the is_in_bounds functionality as this function is more general and

@@ -5,6 +5,8 @@
 
 # Imports
 import random # will later import from an rng.py file that will handle seeding
+from rules import is_in_safe_zone
+from observations import Observation
 
 
 class GreedyPolicy:
@@ -170,9 +172,158 @@ class QlearningPolicy:
             
         return act
 
-    def build_state(self, agent, observation):
+    def build_state(self, agent, observation:Observation):
+        """
+        The state is a string that encodes what is currently visible to an agent that is available for decision making.
+        This function replaces the observe function in previous implementations which was moved to the prey class.
+        The state is used as a key in the q-table to store and retrieve q-values for each action.
+        Care was taken to ensure that the length of the state is consistent in all possible scenarios.
 
-        return f""
+        The following information is encoded in the state string:
+        1. The agent's (prey) current position (x,y)
+        2. The position of the snake if it is in its immediate vicinity (3x3 grid around the agent)
+        3. Any wall tiles in the agent's immediate vicinity.
+        4. The position of any safe zone tiles in the agent's immediate vicinity.
+        5. A flag indicating whether the nearest safe zone is active or not.
+        6. Distance to the nearest safe zone in bucket ranges (e.g. 0-2, 3-5, 6+ indicated as close, medium, far). The exact ranges may be changed based on the size of the grid in future.
+        7. A direction pointer to the nearest safe zone (i.e. N, E, S, W) based on the longest distance and relative position of the agent to the safe zone. 
+           e.g. if safe zone is 2 units right and 4 units down relative to the agent, the direction pointer will be S. If 4 and 2 are swapped around, the resulting direction pointer will be E. 
+           If the distances are equal, whichever direction is determined first will be used. 
+        8. A measure of the occupancy of the safe zone in ranges (e.g. 0%-30%, 30%-60%, 60%-90%, >90% indicated as low, medium, high, critical). The exact ranges may be changed in future. 
+        The following is the structure of the state string:
+        > '{3x3 grid details showing what is in the immediate vicinity}|{SZ_distance}|{SZ_direction}|{SZ_occupancy}|{SZ_active}'
+        > The 3x3 grid details will include:
+            - walls represented by 'X'
+            - snake represented by 'S'
+            - safe zone represented by 'O'
+            - empty tiles represented by '.'
+        > The safe zone distance and direction measures will default to '-' when agent presently in active safezone
+        > SZ_active will have T for true and F for false.
+        """
+        # Helper functions
+        def sz_occupancy(sz_cap, sz_pop):
+            
+            occ = sz_pop/sz_cap
+
+            # Single letters are used to represent the different ranges to keep state lengths consistent regardless of situation
+
+            if occ <=0.3:
+                return "LO" # For low occupancy
+            elif occ<=0.6:
+                return "MO)" # For medium occupancy
+            elif occ<=0.9:
+                return "HO" # For high occupancy
+            else:
+                return "CO" # For critical occupancy
+
+        def dnd_to_SZ(x,y,sz_x,sz_y):
+            """
+            Helper function only required in this method that returns the distance and direction to the nearest
+            safe zone. It is based on the current implementation of the safe zone where an anchor point (x,y) is
+            given, and everything is calculated relative to that anchor point. At the time of coding this, the
+            anchor point represents the bottom left corner of the safe zone. This will need to be changed should
+            safe zone definitions change.
+            """
+
+            dist_x = sz_x - x
+            dist_y = sz_y - y
+
+            if abs(dist_y)>=abs(dist_x):
+                # vertical dominates: N or S
+
+                if dist_y>0:
+                    direction = "dN" # due North 
+                else:
+                    direction = "dS" # due South
+            else:
+
+                if dist_x>0:
+                    direction = "dE" # due East
+                else:
+                    direction = "dW" # due West
+
+            dist = abs(dist_x)+abs(dist_y)
+
+            # ranges developed on assumption that grid size is 20. TODO: make ranges more robust for different map sizes
+            if dist<=6:
+                range = "CD" # close distance
+            elif dist<=8:
+                range = "MD" # Medium distance
+            else:
+                range = "FD" # Far distance
+
+            return (dist, range, direction)
+        
+
+        state = ""
+
+        # build 3x3 grid list of coordinates centered around the prey
+        vicinity = []
+
+        for i in range(-1,2):
+            for j in range(-1,2):
+                vicinity.append((agent.x+i, agent.y+j))
+        
+        # Populate state string
+        for i in vicinity:
+            if i == observation.snake_position:
+                state+='S'
+            elif i in observation.wall_position:
+                state+='X'
+            else:
+                for sz in observation.sz_list:
+                    # borrow is in safe zone from rules.py instead of recoding it.
+                    if is_in_safe_zone(sz.x, sz.y,sz.size,i[0],i[1]):
+                        state+='O'
+                        break # once the cell is populated, there is no need to continue checking in other safe zones
+                else:
+                    # Executed only if the exact vicinity tile is not a safe zone tile.
+                    state+='.'
+        state+="|" # End of the 3x3 grid section
+
+        # Determine distance and direction to nearest safe zone
+        # place holders
+        min_distance = float('inf')
+        min_rng = "--" 
+        min_dire = '--'
+        sz_o = ""
+        sz_active = ""
+
+        for sz in observation.sz_list:
+            if sz.active and is_in_safe_zone(sz.x,sz.y,sz.size,agent.x,agent.y):
+                state+='--' # For distance
+                state+='|' # Next section
+                state+='--' # For direction
+                state+='|' # Next section
+                state+=sz_occupancy(sz.capacity,sz.current_occupants) # SZ occupancy measure
+                state+='|' # Next section
+                state+='T' # Safe zone active: 'T' for True otherwise 'F'
+
+                break # No need to continue with the loop
+            else:
+                
+                d,rng,dire=dnd_to_SZ(agent.x, agent.y,sz.x,sz.y)
+
+                if d<min_distance:
+                    min_rng = rng
+                    min_dire = dire
+                    sz_o = sz_occupancy(sz.capacity, sz.current_occupants)
+                    sz_active = 'T' if sz.active else 'F'
+                    min_distance = d
+                
+        else:
+            # Executes only if agent was not in SZ - meaning distance and other measures have not been added to state
+            state+=min_rng  # distance
+            state+="|"      # next section
+            state+=min_dire # direction
+            state+="|"      # next section
+
+            assert sz_o != "", "Error in the build_state safe zone related logic"
+            state+=sz_o     # safe zone occupancy measure
+            state+="|"      # next section
+            state+=sz_active
+
+        return state
 
     def get_last_action(self, agent):
 
@@ -187,5 +338,6 @@ class QlearningPolicy:
             return agent.last_act
         else:
             return (agent.x - agent.prev_x, agent.y - agent.prev_y)
+        
             
 
