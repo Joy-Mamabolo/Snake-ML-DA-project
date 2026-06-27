@@ -5,8 +5,8 @@
 
 # Imports
 import random # will later import from an rng.py file that will handle seeding
-from rules import is_in_safe_zone
-from observations import Observation
+from src.simulation.rules import is_in_safe_zone
+from src.simulation.observations import Observation
 
 
 class GreedyPolicy:
@@ -210,7 +210,7 @@ class QlearningPolicy:
             if occ <=0.3:
                 return "LO" # For low occupancy
             elif occ<=0.6:
-                return "MO)" # For medium occupancy
+                return "MO" # For medium occupancy
             elif occ<=0.9:
                 return "HO" # For high occupancy
             else:

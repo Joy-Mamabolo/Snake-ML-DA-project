@@ -8,10 +8,10 @@ import random
 from collections import defaultdict
 
 # Dependency imports
-from observations import Observation
-from agents import Snake, Prey
-from policy import GreedyPolicy, RandomPolicy, QlearningPolicy
-from rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active, boundary_collision, agent_collision
+from src.simulation.observations import Observation
+from src.simulation.agents import Snake, Prey
+from src.simulation.policy import GreedyPolicy, RandomPolicy, QlearningPolicy
+from src.simulation.rules import is_in_safe_zone, is_in_bounds, is_safe_zone_active, boundary_collision, agent_collision
 
 
 # Global variables - TODO: Place these in a configuration file.
