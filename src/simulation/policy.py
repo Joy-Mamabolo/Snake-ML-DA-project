@@ -289,6 +289,10 @@ class QlearningPolicy:
         sz_o = ""
         sz_active = ""
 
+        min_inactive_distance = float('inf')
+        sz_inactive_o = ""
+        
+
         for sz in observation.sz_list:
             if sz.active and is_in_safe_zone(sz.x,sz.y,sz.size,agent.x,agent.y):
                 state+='--' # For distance
@@ -300,8 +304,8 @@ class QlearningPolicy:
                 state+='T' # Safe zone active: 'T' for True otherwise 'F'
 
                 break # No need to continue with the loop
-            else:
-                
+            elif sz.active:
+                # safe zone active but not in safe zone
                 d,rng,dire=dnd_to_SZ(agent.x, agent.y,sz.x,sz.y)
 
                 if d<min_distance:
@@ -310,18 +314,48 @@ class QlearningPolicy:
                     sz_o = sz_occupancy(sz.capacity, sz.current_occupants)
                     sz_active = 'T' if sz.active else 'F'
                     min_distance = d
+            else:
+                # safe zone is inactive
+                # agent is either in the safe zone or not in the safe zone. Responses should be the same for both
+                
+                d,_,_ = dnd_to_SZ(agent.x,agent.y,sz.x,sz.y)
+
+                if d<min_inactive_distance:
+                    min_inactive_distance = d
+                    sz_inactive_o = sz_occupancy(sz.capacity, sz.current_occupants)
+
+                
                 
         else:
-            # Executes only if agent was not in SZ - meaning distance and other measures have not been added to state
-            state+=min_rng  # distance
-            state+="|"      # next section
-            state+=min_dire # direction
-            state+="|"      # next section
+            
+            if min_distance == float('inf'):
+                # Case where no other active safe zone
+                # this will only be the case if the safe zone minimum distance has never updated. It only updates for active safe zones.
 
-            assert sz_o != "", "Error in the build_state safe zone related logic"
-            state+=sz_o     # safe zone occupancy measure
-            state+="|"      # next section
-            state+=sz_active
+                """ if no other safe zones are active:
+                    direction should be: --
+                    distance should be: --
+                    occupancy should be that of the nearest safe zone even though inactive
+                    safe zone active flag should also be that of the nearest safe zone.
+                """
+
+                state+='--'             # For distance
+                state+='|'              # Next section
+                state+='--'             # For direction
+                state+='|'              # Next section
+                state+=sz_inactive_o    # SZ occupancy measure
+                state+='|'              # Next section
+                state+='F'              # Safe zone active: 'T' for True otherwise 'F'
+
+            else:
+                # Executes only if agent was not in an active SZ - meaning distance and other measures have not been added to state, but an active safe zone exists.
+                state+=min_rng  # distance
+                state+="|"      # next section
+                state+=min_dire # direction
+                state+="|"      # next section
+                state+=sz_o     # safe zone occupancy measure
+                state+="|"      # next section
+                state+=sz_active
 
         return state
 
