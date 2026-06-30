@@ -8,7 +8,7 @@
      
 def is_in_safe_zone(sz_x, sz_y, sz_size, x, y):
         
-    if (sz_x<=x<=sz_x+sz_size) and (sz_y<=y<=sz_y+sz_size):
+    if (sz_x<=x<=sz_x+sz_size-1) and (sz_y<=y<=sz_y+sz_size-1):
         return True
         
     return False

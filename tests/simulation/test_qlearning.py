@@ -218,7 +218,86 @@ def test_build_state_handles_agent_in_safe_zone_as_expected():
 
 
 def test_build_state_handles_3x3_encoding_as_expected():
-    pass
+    # Arrange
+    q_learner = QlearningPolicy()
+
+    snake_pos = (2,3)
+    prey_list = [] # observation not used
+    wall_position = set()
+    grid_size = 20
+
+    sz_list = [SafeZone(10,10,4,12)]
+    
+    
+    valid_moves = [] # observation not used
+    obs = Observation(snake_pos,prey_list,wall_position,grid_size,sz_list,valid_moves)
+
+    
+    # Get agent
+    agent = Prey(11,11,QlearningPolicy()) # Agent positioned in safe zone
+
+    # Act
+    s_in_centre_sz = q_learner.build_state(agent, obs)
+
+    agent.y = 13 # change agent position
+    s_on_right_edge_sz = q_learner.build_state(agent,obs)
+
+    agent.x = 12
+    agent.y = 12
+    snake_pos = (agent.x-1,agent.y) # change snake position - expected to fail
+    obs = Observation(snake_pos,prey_list,wall_position,grid_size,sz_list,valid_moves)
+    s_in_sz_with_snake_above = q_learner.build_state(agent,obs)
+
+    agent.x,agent.y = 5,5   # change agent position
+    s_in_empty_space = q_learner.build_state(agent,obs)
+
+
+    agent.x,agent.y = 18,18
+    # set up walls
+    for i in range(grid_size):
+        for j in range(grid_size):
+
+            if i==0 or j ==0 or i ==grid_size-1 or j==grid_size-1:
+                wall_position.add((i,j))
+    s_in_map_corner = q_learner.build_state(agent,obs)
+
+    snake_pos = (17,17)
+    obs = Observation(snake_pos,prey_list,wall_position,grid_size,sz_list,valid_moves)
+    s_in_map_corner_with_snake_on_top_left = q_learner.build_state(agent,obs)
+
+    sz_list.append(SafeZone(1,1,2,2)) # add another safe zone
+    agent.x,agent.y = 1,2
+    snake_pos = (agent.x+1,agent.y+1)
+    obs = Observation(snake_pos,prey_list,wall_position,grid_size,sz_list,valid_moves)
+    s_sz_next_to_wall_with_snake_outside = q_learner.build_state(agent,obs)
+
+    # Assert
+    assert s_in_centre_sz[:9].count('O') == 9, f"{s_in_centre_sz[:9]} does not render in the centre of sz as expected"
+
+    assert s_on_right_edge_sz[:9].count('O')==6 , f"{s_on_right_edge_sz[:9]} does not render at the right edge of safe zone as expected. safe zone cell count off"
+    assert s_on_right_edge_sz[:9].count('.')==3, f"{s_on_right_edge_sz[:9]} does not render at the right edge of sz as expected. empty cell count off"
+    assert s_on_right_edge_sz[8]=='.', f"{s_on_right_edge_sz[:9]} does not render at the right edge of sz as expected. empty cell placement off"
+
+    assert s_in_sz_with_snake_above[:9].count("O")==8, f"{s_in_sz_with_snake_above[:9]} does not render snake in safe zone as expected. safe zone cell count off"
+    assert s_in_sz_with_snake_above[1]=="S", f"{s_in_sz_with_snake_above[:9]} does not render snake in safe zone as expected. Snake position off"
+    
+    assert s_in_empty_space[:9].count(".") == 9, f"{s_in_empty_space[:9]} does not render in empty space correctly. empty cell count off"
+
+    assert s_in_map_corner[:9].count("X") ==5, f"{s_in_map_corner[:9]} does not render in map corner as expected. wall count off"
+
+    assert s_in_map_corner_with_snake_on_top_left[0]=="S", f"{s_in_map_corner_with_snake_on_top_left[:9]} does not render snake near map corner as expected. Snake position off"
+    assert s_in_map_corner_with_snake_on_top_left[:9].count('.')==3, f"{s_in_map_corner_with_snake_on_top_left[:9]} does not render snake near map corner as expected. empty cell count off"
+    assert s_in_map_corner_with_snake_on_top_left[:9].count("X") ==5, f"{s_in_map_corner_with_snake_on_top_left[:9]} does not render snake near map corner as expected. wall count off"
+
+    assert s_sz_next_to_wall_with_snake_outside[:9].count("X")==3, f"{s_sz_next_to_wall_with_snake_outside[:9]} does not render sz next to wall with snake out side as expected. wall count off"
+    assert s_sz_next_to_wall_with_snake_outside[:9].count('S')==1, f"{s_sz_next_to_wall_with_snake_outside[:9]} does not render sz next to wall with snake outside as expected. snake count off"
+    assert s_sz_next_to_wall_with_snake_outside[:9].count('O')==4, f"{s_sz_next_to_wall_with_snake_outside[:9]} does not render sz next to wall with snake outside as expected. sz cell count off"
+    assert s_sz_next_to_wall_with_snake_outside[:9].count('.')==1, f"{s_sz_next_to_wall_with_snake_outside[:9]} does not render sz next to wall with snake outside as expected. empty cell count off"
+    assert s_sz_next_to_wall_with_snake_outside[8]=="S", f"{s_sz_next_to_wall_with_snake_outside[:9]} does not render sz next to wall with snake outside as expected. snake position off"
+    assert ".OOS" in s_sz_next_to_wall_with_snake_outside[:9], f"{s_sz_next_to_wall_with_snake_outside[:9]} does not render sz next to wall with snake outside as expected. character sequence off "
+
+
+    
 
 def test_build_state_handles_multiple_safe_zones_as_expected():
     pass

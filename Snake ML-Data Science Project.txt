@@ -1,5 +1,10 @@
 Snake ML-Data Science Project
 
+___________________________________________________________________________________________________________
+
+Note coordinate system: x-axis is vertical increasing downwards, while y-axis is horizontal increasing rightwards!
+___________________________________________________________________________________________________________
+
 Game Loop
 
 Agent: Observe -> Decide -> Game Determines -> Agent Learns

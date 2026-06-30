@@ -17,6 +17,7 @@ This world is modelled after the classic snake game world where there is a bound
 ## Environment:
 - Grid - Grid is a standard box with no intermediate obstacles.
 - Safe zones - The grid contains safe zones that have a specific carrying capacity. When the number of prey inside of the zone is below the carrying capacity, the edges of the safe zone become walls to the snake (active safe zone). When the number of prey inside the zone exceeds carrying capacity, the walls collapse and allow snake entry (inactive safe zone). The safe zone will remain inactive until both the occupancy of the safe zone is below capacity and the snake has left the safe zone (so that the snake is not trapped in the safe zone).
+- Coordinate system: x is vertical increasing downwards; while y is horizontal increasing rightwards
 
 ## Data persistence:
 A game state dictionary holds some of the states of the different objects and is stored in a JSON file for eventual data analysis and model visualization.
