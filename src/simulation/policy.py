@@ -145,7 +145,7 @@ class QlearningPolicy:
             candidate = [random.choice(agent.actions)] # made it a list for consistency
         else:
             # Be principled - consult your q-table
-            candidate = [] # default value although it should not be necessary  TODO: Remove default candidate value. It is guaranteed that there will be at least one action with a q-value of at least 0.0
+            candidate = []
             threshold = 0.0
 
             for action in agent.actions:
