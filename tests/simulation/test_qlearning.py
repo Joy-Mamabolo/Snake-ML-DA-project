@@ -488,6 +488,38 @@ def test_choose_action_returns_best_action_from_q_table_when_epsilon_is_zero():
     assert action1 == (1,0), f"choose_action did not return the best action from q_table when epsilon was 0. Instead, {action1} was returned"
     assert action2 == (0,-1), f"choose_action did not return the best action from q_table when epsilon was 0. Instead, {action2} was returned"
 
+def test_choose_action_returns_an_action_when_epsilon_is_zero_and_q_values_are_negative():
+    # Arrange
+    q_learner = QlearningPolicy()
+
+    snake_pos = (2,3) # Not used
+    prey_list = [] # observation not used
+    wall_position = set() # Not used
+    grid_size = 20
+
+    sz_list = [SafeZone(10, 10, 2)]
+    
+    
+    valid_moves = [] # observation not used
+    obs = Observation(snake_pos,prey_list,wall_position,grid_size,sz_list,valid_moves)
+
+    
+    # Get agent
+    agent = Prey(11,11,QlearningPolicy(epsilon=0.0)) # set epsilon to 0 to force exploitation of q_table
+
+    # Act
+    s = q_learner.build_state(agent, obs)
+    # add state-action pairs to q_table
+    agent.policy.q_table = {(s, (0,1)): -1.2}
+    agent.policy.q_table[(s,(1,0))] = -2.5
+    agent.policy.q_table[(s,(-1,0))] = -0.5
+    agent.policy.q_table[(s,(0,-1))] = -0.9
+
+    action = agent.policy.choose_action(agent, obs)
+
+    # Assert
+    assert  action == (-1,0), f"choose_action did not return the right action when epsilon was 0 and q-values were negative. Actions returned: {action}"
+
 def test_choose_action_returns_random_action_from_q_table_when_epsilon_is_one():
     # Arrange
     q_learner = QlearningPolicy()
@@ -694,6 +726,7 @@ if __name__ == "__main__":
 
     # choose_action function tests
     test_choose_action_returns_best_action_from_q_table_when_epsilon_is_zero()
+    test_choose_action_returns_an_action_when_epsilon_is_zero_and_q_values_are_negative()
     test_choose_action_returns_random_action_from_q_table_when_epsilon_is_one()
     
     # update_q_table function tests

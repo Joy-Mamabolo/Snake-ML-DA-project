@@ -146,7 +146,7 @@ class QlearningPolicy:
         else:
             # Be principled - consult your q-table
             candidate = []
-            threshold = 0.0
+            threshold = float('-inf') # set threshold to negative infinity so that any q-value will be greater than it
 
             for action in agent.actions:
                 q = self.get_q(state, action)
