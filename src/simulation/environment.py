@@ -19,7 +19,7 @@ from src.simulation.rules import is_in_safe_zone, is_in_bounds, is_safe_zone_act
 GRID_SIZE = 20
 NUM_PREY = 6
 NUM_LEARNING_PREY = 3
-STEPS = 100000
+STEPS = 1000
 DEBUG = False
 SZ_SIZE = 6
 SZ_CAP = 3
@@ -46,6 +46,7 @@ class World_Building_Error(Custom_Error):
     def __init__(self, x, y):
 
         self.message = f"Respawn zone tile and wall tile overlap at {x,y}"
+        super().__init__(self.message)
     
     def get_message(self):
         return self.message
@@ -110,7 +111,8 @@ class Game:
         # Add outer boundary walls - Currently only supports square maps
         for x in range(self.grid_size):
             for y in range(self.grid_size):
-                self.walls.add((x,y))
+                if x == 0 or x == self.grid_size-1 or y == 0 or y == self.grid_size-1:
+                    self.walls.add((x,y))
         
         # Add special walls if defined where special walls are defined as a list of tuples
         for x,y in special_walls:
@@ -129,7 +131,7 @@ class Game:
 
             else:
                 
-                for x,y in [(0,0),(0,self.grid_size), (self.grid_size, 0), (self.grid_size, self.grid_size)]:
+                for x,y in [(0,0),(0,self.grid_size-1), (self.grid_size-1, 0), (self.grid_size-1, self.grid_size-1)]:
 
                     for i in range(1,3):
 
@@ -146,8 +148,10 @@ class Game:
                             else:
                                 self.spawn_zones.append((x+i,y+j))
 
-        except World_Building_Error:
-                print(World_Building_Error.get_message)
+        except World_Building_Error as e:
+                print(e)
+                exit(1) # exit the program if there is a world building error. This is to prevent the simulation from running in an invalid state.
+                
 
     def build_prey_list(self, total_prey, num_learning):
         
@@ -212,7 +216,11 @@ class Game:
     def build_observation(self, agent=None):
         """Build observations for all agents in the game."""
         
-        candidate_moves = self.get_valid_moves(agent)
+        if agent is None:
+            # Build observation for prey agents which is by default all available actions since prey actions carry rewards and are therefore not restricted by the environment
+            candidate_moves = [] # Valid moves are not required for prey agents since all actions attract a reward and are therefore not restricted by the environment
+        else:
+            candidate_moves = self.get_valid_moves(agent)
 
         return Observation(
             snake_position = (self.snake.x, self.snake.y),
@@ -283,6 +291,7 @@ class Game:
 
                 # Mark prey as captured
                 prey.alive = False
+                prey.generation+=1 # increment generation counter for number of captures
 
                 # Update events
                 if prey in events:
@@ -394,24 +403,4 @@ class Game:
 
         self.update_learning(rewards, (snake_obs, prey_obs), (next_snake_obs, next_prey_obs))
         
-        return all_events
-
-    def game_write_to_file(self):
-        # Save the current game to a file for later analysis.
-        data = {
-            #'game': 0, # I want to implement a game counter for the visualization portion
-            'step': self.step_count,
-            'snake_position': (self.snake.x, self.snake.y),
-            'prey_positions': [(prey.x, prey.y, prey.learning, prey.alive, prey.generation) for prey in self.prey_list],
-            'safe_zone_status': [(sz.x, sz.y, sz.size, sz.active, sz.current_occupants) for sz in self.safe_zone]
-        }
-
-        with open('game_log.json', 'a') as f:
-            f.write(json.dumps(data) + '\n')
-    
-    def game_from_file(self, filename):
-        # Load a game from a file. This is for analysis and visualization of past games, not for resuming a game. It returns a list of game states.
-        with open(filename, 'r') as f:
-            game_states = [json.loads(line) for line in f]
-        
-        return game_states
+        return all_events, prey_obs

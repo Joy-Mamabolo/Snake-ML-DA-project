@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from src.simulation.environment import GRID_SIZE, STEPS
+
+DEBUG = True
 
 def visualize_game(game_states, grid_size = GRID_SIZE,seek = 0, step_interval = STEPS):
 
@@ -79,5 +82,5 @@ def visualize_game(game_states, grid_size = GRID_SIZE,seek = 0, step_interval = 
 
     if DEBUG:
         # overwrite JSON file
-        with open('game_log.json', 'w'):
+        with open('game_log.jsonl', 'w'):
             pass
